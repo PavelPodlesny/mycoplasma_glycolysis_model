@@ -28,7 +28,7 @@ function findOscillations(directory, nva)
     time_span = [linspace(0,10,101) (11:nva.sim_time)];
     objective_limit = 0;
     %% load a model
-    model_list = dir([data_path filesep '*.xml']);
+    models_list = dir([data_path filesep '*.xml']);
     model = sbmlimport([data_path filesep models_list(1).name]);
     %%get a cell array of model's species
     species_number = height(model.Species);
@@ -39,7 +39,7 @@ function findOscillations(directory, nva)
     %% create a directory for output data
     output_dir = createOutputDirectory(data_path);
     %% read a list of parameters/variables (with boundaries) wich will be varied 
-    [params, lb, ub] = getParametersListAndBounds(data_path)
+    [params, lb, ub] = getParametersListAndBounds(data_path);
     nvars = width(params);
     optim_results_vars = [{'#'} params {'metrics', 'exitflag'}];
     %% !!! create log file
@@ -70,7 +70,7 @@ function findOscillations(directory, nva)
     optim_results = table();
     for iter=1:nva.repeats_number
     % !!! optimization
-        [fitted_params, fval, exitflag, message] = particleswarm(objfun, nvars, lb, ub);
+        [fitted_params, fval, exitflag, ~] = particleswarm(objfun, nvars, lb, ub);
         optim_results(end+1,:) = [{i} num2cell(fitted_params) {fval, exitflag}];
         %% save solution with new parameters
         [t, sol] = modelfun(fitted_params, [], [], time_span);
@@ -89,7 +89,7 @@ end
 function output_dir = createOutputDirectory(data_path)
 %% the function creates a directory where output data will be stored
     date = datestr(now, 'dd-mmm-yy-HH-MM-SS');
-    output_dir = [data_path filesep 'oscill-search-' data];
+    output_dir = [data_path filesep 'oscill-search-' date];
     if ~isdir(output_dir)
         mkdir(output_dir);
     end
@@ -106,7 +106,7 @@ function [parameters_list, lower_bounds, upper_bounds] = getParametersListAndBou
 end
 
 function metrics = objectiveFunction(p, modelfun, time_span, peak_number, min_peak_sep, min_peak_prom)
-    [t, sol] = modelfun(p, [], [], time_span);
+    [~, sol] = modelfun(p, [], [], time_span);
     pks = islocalmax(sol{1}, 1, 'MinProminence', min_peak_prom,...
                                 'MinSeparation', min_peak_sep,...
                                 'SamplePoints' , time_span);
