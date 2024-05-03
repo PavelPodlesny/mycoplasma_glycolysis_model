@@ -6,6 +6,7 @@ function SBtabToSBMLmodel(varargin)
 % model_name      -- char    -- model's name
 % save_as_matfile -- logical -- save the structure as an matfile or not
 
+
     dummy=0;
     arguments = {'test', 'test_model', true};
     if ~isempty(varargin)
