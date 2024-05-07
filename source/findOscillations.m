@@ -21,6 +21,7 @@ function findOscillations(directory, nva)
         nva.min_peak_sep  = 10
         nva.peak_number   = 11 
     end
+
     
     %% subfunctions
     % K = @(x) ( 2/abs(2-x-sqrt(x*x-4*x)) );
