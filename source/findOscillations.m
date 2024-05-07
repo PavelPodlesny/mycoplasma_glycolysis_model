@@ -9,6 +9,7 @@ function findOscillations(directory, nva)
     arguments
         % general parameters 
         directory char
+        nva.threads         = 10
         nva.info            = ''     % information about an experiment 
         nva.sim_time        = 7200   % duration of a simulation
         nva.use_parallel    = false  % parallel computation for optimization
@@ -21,7 +22,7 @@ function findOscillations(directory, nva)
         nva.peak_number   = 11 
     end
 
-    
+    try 
     %% subfunctions
     % K = @(x) ( 2/abs(2-x-sqrt(x*x-4*x)) );
     %% constants 
@@ -76,7 +77,12 @@ function findOscillations(directory, nva)
     %% start optimization
     optim_results_vars = [{'#'} params {'metrics', 'exitflag'}];
     optim_results = table();
+
     
+    if nva.use_parallel
+        delete(gcp("nocreate"));
+        poolobj = parpool("Threads", nva.threads)
+    end
     for iter=1:nva.repeats_number
     %% !!! optimization
         tic;
@@ -102,12 +108,21 @@ function findOscillations(directory, nva)
                    'FileType', 'text', ...
                    'Delimiter', '\t');
     end
+
+    if nva.use_parallel 
+        delete(gcp("nocreate"));
+    end
     %% save table with results
     optim_results.Properties.VariableNames = optim_results_vars;
     writetable(optim_results, [output_dir filesep 'optimization_results.tsv'], ...
                'FileType', 'text', ...
                'Delimiter', '\t');
     %% !!! plot dynamics
+    catch ME
+        delete(gcp("nocreate"));
+        fclose('all');
+        rethrow(ME);
+    end
 end
 
 %% support functions
@@ -151,13 +166,15 @@ function opts = setupPSO(s)
                                 'SocialAdjustmentWeight', s.social_weight          ,...
                                 'MinNeighborsFraction'  , s.min_neighbors_fraction ,...
                                 'UseParallel'           , s.use_parallel           ,...
-                                'ObjectiveLimit'        , s.objective_limit);
+                                'ObjectiveLimit'        , s.objective_limit        ,...
+                                'UseVectorized'         , false);
                                 %'MaxStallIterations'   , s.max_stall_iter         ,...
                                 %'MaxTime'              , s.max_time
         case 'base'
             opts = optimoptions('particleswarm', ...
                                 'UseParallel'           , s.use_parallel           ,...
-                                'ObjectiveLimit'        , s.objective_limit);
+                                'ObjectiveLimit'        , s.objective_limit        ,...
+                                'UseVectorized'         , false);
     end
 end
 
