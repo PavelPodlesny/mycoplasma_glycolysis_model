@@ -6,7 +6,6 @@ function findOscillations(directory, nva)
 %% Input arguments.
 % directory   -- char      -- a work directory
 % observables -- char cell -- a cell array with observed species: {'G6P', 'FDP', 'ATP'}
-    dummy = 0;
     arguments
         % general parameters 
         directory char
@@ -40,6 +39,7 @@ function findOscillations(directory, nva)
     %% create a directory for output data
     [output_dir, date] = createOutputDirectory(data_path);
     log_.date = date;
+    log_.dir = output_dir;
     %% read a list of parameters/variables (with boundaries) wich will be varied 
     [params, lb, ub] = getParametersListAndBounds(data_path);
     nvars = width(params);
@@ -47,7 +47,7 @@ function findOscillations(directory, nva)
     %% !!! create log file
     nva.params = params;
     nva.lb = lb;
-    nva.up = ub;
+    nva.ub = ub;
     nva.date = date;
     nva.dir = output_dir;
     logger('header', nva);
@@ -80,7 +80,7 @@ function findOscillations(directory, nva)
     for iter=1:nva.repeats_number
     %% !!! optimization
         tic;
-            [fitted_params, fval, exitflag, ~] = particleswarm(objfun, nvars, lb, ub, opts);
+            [fitted_params, fval, exitflag, output] = particleswarm(objfun, nvars, lb, ub, opts);
         log_.elapsed_time = toc;
         
             log_.iter = iter;
@@ -89,7 +89,7 @@ function findOscillations(directory, nva)
             log_.evalnum = output.funccount;
             
         logger('iteration', log_);
-        optim_results(end+1,:) = [{i} num2cell(fitted_params) {fval, exitflag}];
+        optim_results(end+1,:) = [{iter} num2cell(fitted_params) {fval, exitflag}];
 %             optim_results.iter(iter) = iter;
 %             optim_results.fitted_parameters(iter, 1:nvars) = fitted_params;
 %             optim_results.metrics(iter) = fval;
@@ -99,11 +99,13 @@ function findOscillations(directory, nva)
         solution = array2table([t{1} sol{1}]);
         solution.Properties.VariableNames = [{'time'} species_list];
         writetable(solution, [output_dir filesep 'solution-' num2str(iter) '.tsv'], ...
+                   'FileType', 'text', ...
                    'Delimiter', '\t');
     end
     %% save table with results
     optim_results.Properties.VariableNames = optim_results_vars;
-    writetable(solution, [output_dir filesep 'optimization_results.tsv'], ...
+    writetable(optim_results, [output_dir filesep 'optimization_results.tsv'], ...
+               'FileType', 'text', ...
                'Delimiter', '\t');
     %% !!! plot dynamics
 end
@@ -167,7 +169,7 @@ function logger(mode, log_)
                 fprintf(fid, '\tcreation date: %s\n', log_.date);
                 fprintf(fid, '\tdirectory    : %s\n', log_.dir);
                 fprintf(fid, '### Experiment information ###\n');
-                fprintf(fid, ['\t' log_.info '\n']);
+                fprintf(fid, ['\t%s\n'], log_.info );
                 fprintf(fid, '\titer. num.: %d\n', log_.repeats_number);
                 fmt = ['\tvariable parameters = [', repmat('%s, ', 1, numel(log_.params)-1), '%s]\n'];
                 fprintf(fid, fmt, log_.params{:});
@@ -187,7 +189,7 @@ function logger(mode, log_)
                 date = datestr(now, 'dd-mmm-yy-HH-MM-SS');
                 fprintf(fid, '%s: iter. %d finished\n', date, log_.iter);
                 fprintf(fid, '\texit flag = %d\n', log_.exitflag);
-                fprintf(fid, '\tmetrics   = %e\n', sqrt(log_.fval));
+                fprintf(fid, '\tmetrics   = %d\n', sqrt(log_.fval));
                 fprintf(fid, '\tevalnum   = %d\n', log_.evalnum);
                 fprintf(fid, '\ttime      = %d min.\n', round(log_.elapsed_time/60));
             fclose(fid);
