@@ -9,9 +9,9 @@ function findOscillations(directory, nva)
     arguments
         % general parameters 
         directory char
-        nva.threads         = 10
+        nva.threads         = 5
         nva.info            = ''     % information about an experiment 
-        nva.sim_time        = 7200   % duration of a simulation
+        nva.sim_time        = 3600   % duration of a simulation
         nva.use_parallel    = false  % parallel computation for optimization
         nva.repeats_number  = 1      % number of repeats
         nva.optimizer_setup = 'base' % 'base' or 'accurate'
@@ -22,7 +22,9 @@ function findOscillations(directory, nva)
         nva.peak_number   = 11 
     end
 
-    try 
+    try
+    disp('reset sbioroot...');
+    reset(sbioroot);
     %% subfunctions
     % K = @(x) ( 2/abs(2-x-sqrt(x*x-4*x)) );
     %% constants 
@@ -39,8 +41,8 @@ function findOscillations(directory, nva)
     end
     %% create a directory for output data
     [output_dir, date] = createOutputDirectory(data_path);
-    log_.date = date;
-    log_.dir = output_dir;
+    %log_.date = date;
+    %log_.dir = output_dir;
     %% read a list of parameters/variables (with boundaries) wich will be varied 
     [params, lb, ub] = getParametersListAndBounds(data_path);
     nvars = width(params);
@@ -57,45 +59,59 @@ function findOscillations(directory, nva)
     %model_configs = getconfigset(model);
     %model_configs.StopTime = nva.sim_time; #set duration of a simulation
     %model_configs.SolverOptions.OutputTimes = time_span;
-    modelfun = createSimFunction(model, params, species_list, []);
+    modelfun = createSimFunction(model, params, species_list, []); %!!!
     %% define an objective function handler
     objfun = @(p) objectiveFunction(p, modelfun, time_span, ...
                                     nva.peak_number, nva.min_peak_sep, nva.min_peak_prom);
+    %objfun = @objectivefun;
     %% setup an optimizer
     pso_settings.mode = nva.optimizer_setup;
     pso_settings.objective_limit = 0;
     pso_settings.use_parallel = nva.use_parallel;
     
     if strcmp(nva.optimizer_setup, 'accurate')
+        disp('setting pso...');
         pso_settings.swarm_size  = 100;
-        pso_settings.self_weight = 1.49;
-        pso_settings.social_weight = 1.49;
-        pso_settings.inertia = [0.1, 1.1];
-        pso_settings.min_neighbors_fraction = 0.8;
+        pso_settings.max_stall_iterations = 0.25*(200*nvars); % 200*nvars = default MaxIterations
+        %pso_settings.self_weight = 1.49;
+        %pso_settings.social_weight = 1.49;
+        %pso_settings.inertia = [0.1, 1.1];
+        %pso_settings.min_neighbors_fraction = 0.8;
     end
     opts = setupPSO(pso_settings);
     %% start optimization
     optim_results_vars = [{'#'} params {'metrics', 'exitflag'}];
     optim_results = table();
 
-    
     if nva.use_parallel
         delete(gcp("nocreate"));
-        poolobj = parpool("Threads", nva.threads)
+        poolobj = parpool("Threads", nva.threads);
+        %addAttachedFiles(poolobj,"/home/podlesnyi/.MathWorks/SimBiology/aa9a620f-7796-4ed6-90ac-dd9c8e861ccf/");
+        %/home/podlesnyi/.MathWorks/SimBiology
+    else
+        nva.threads = 0;
     end
-    for iter=1:nva.repeats_number
+    
+    for (iter=1:nva.repeats_number)
     %% !!! optimization
+        disp([datestr(now, 'dd-mmm-HH-MM') ': iter. ' num2str(iter) ' starts...']);
+            log_ = struct();
+            log_.date = date;
+            log_.dir  = output_dir;
         tic;
             [fitted_params, fval, exitflag, output] = particleswarm(objfun, nvars, lb, ub, opts);
         log_.elapsed_time = toc;
-        
-            log_.iter = iter;
+        disp(['    iter. ' num2str(iter) ' finished: elapsed time = ' num2str(log_.elapsed_time) ' sec.']);
+            log_.fval     = fval;
+            log_.iter     = iter;
             log_.exitflag = exitflag;
-            log_.fval = fval;
-            log_.evalnum = output.funccount;
+            log_.evalnum  = output.funccount;
             
         logger('iteration', log_);
-        optim_results(end+1,:) = [{iter} num2cell(fitted_params) {fval, exitflag}];
+        row = table();
+        row(1,:) = [{iter} num2cell(fitted_params) {fval, exitflag}];
+        optim_results = [optim_results; row];
+        %optim_results(end+1,:) = [{iter} num2cell(fitted_params) {fval, exitflag}];
 %             optim_results.iter(iter) = iter;
 %             optim_results.fitted_parameters(iter, 1:nvars) = fitted_params;
 %             optim_results.metrics(iter) = fval;
@@ -118,6 +134,7 @@ function findOscillations(directory, nva)
                'FileType', 'text', ...
                'Delimiter', '\t');
     %% !!! plot dynamics
+    disp('Job is gone!');
     catch ME
         delete(gcp("nocreate"));
         fclose('all');
@@ -160,21 +177,24 @@ function opts = setupPSO(s)
     switch s.mode
         case 'accurate'
             opts = optimoptions('particleswarm', ...
+                                'Display'               , 'none'                   ,...
                                 'SwarmSize'             , s.swarm_size             ,...
-                                'InertiaRange'          , s.inertia                ,...
-                                'SelfAdjustmentWeight'  , s.self_weight            ,...
-                                'SocialAdjustmentWeight', s.social_weight          ,...
-                                'MinNeighborsFraction'  , s.min_neighbors_fraction ,...
-                                'UseParallel'           , s.use_parallel           ,...
+                                'MaxStallIterations'    , s.max_stall_iterations   ,...
                                 'ObjectiveLimit'        , s.objective_limit        ,...
                                 'UseVectorized'         , false);
-                                %'MaxStallIterations'   , s.max_stall_iter         ,...
-                                %'MaxTime'              , s.max_time
+                                %'InertiaRange'          , s.inertia                ,...
+                                %'SelfAdjustmentWeight'  , s.self_weight            ,...
+                                %'SocialAdjustmentWeight', s.social_weight          ,...
+                                %'MinNeighborsFraction'  , s.min_neighbors_fraction ,...
+                                %'UseParallel'           , s.use_parallel           ,...
+                                %'MaxStallIterations'    , s.max_stall_iter         ,...
+                                %'MaxTime'               , s.max_time
         case 'base'
             opts = optimoptions('particleswarm', ...
-                                'UseParallel'           , s.use_parallel           ,...
+                                'Display'               , 'none'                   ,... 
                                 'ObjectiveLimit'        , s.objective_limit        ,...
                                 'UseVectorized'         , false);
+                                %'UseParallel'           , s.use_parallel           ,...
     end
 end
 
@@ -212,3 +232,7 @@ function logger(mode, log_)
             fclose(fid);
     end
 end
+
+%function m = objectivefun(p)
+%        m = sum(p);
+%end
