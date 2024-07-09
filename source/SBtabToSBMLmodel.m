@@ -1,10 +1,10 @@
 function SBtabToSBMLmodel(varargin)
-%% SBtabToSBMLmodel(directory, save_as_matfile)
+%% SBtabToSBMLmodel(directory, model_name, save_as_matfile)
 %% Summary. This function reads an SBtab document with model's data, converts it to a structure, buildes a model, verifies the model and writes .txt file with model's equations.
 %% Input arguments.
-% directory       -- char    -- an directory with model's data
-% model_name      -- char    -- model's name
-% save_as_matfile -- logical -- save the structure as an matfile or not
+%        directory       -- char    -- an directory with model's data
+%        model_name      -- char    -- model's name
+%        save_as_matfile -- logical -- save the structure as an matfile or not
 
 
     dummy=0;

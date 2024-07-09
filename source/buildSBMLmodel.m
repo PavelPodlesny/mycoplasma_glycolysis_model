@@ -2,11 +2,11 @@ function [model, equations] = buildSBMLmodel(model_data, varargin)
 %% sbml_model = buildSBMLmodel(model_data, model_name)
 %% Summary. This function builds SBML model from 'model_data' structure and verifies it.
 %% Input arguments.
-% model_data -- struct  -- an structure containing model's data
-% model_name -- char    -- model's name
+%        model_data -- struct  -- an structure containing model's data
+%        model_name -- char    -- model's name
 %% Output arguments.
-% model     -- SimBiology model object -- a model
-% equations -- char -- model's equations 
+%        model     -- SimBiology model object -- a model
+%        equations -- char                    -- model's equations 
     dummy=0;
     arguments = {'mycoplasma_glycolysis'};
     
@@ -32,6 +32,7 @@ function [model, equations] = buildSBMLmodel(model_data, varargin)
         param.Units = model_data.parameter{i, '!Unit'};
         param.Notes = model_data.parameter{i, '!Name'};
         param.Tag   = model_data.parameter{i, '!QuantityType'};
+        %param.ConstantValue = true; %!!!
     end
     %% add species
     for i=1:height(model_data.compound)

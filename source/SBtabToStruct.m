@@ -2,12 +2,13 @@ function model_data = SBtabToStruct(varargin)
 %% model_data = SBtabToStruct(directory, save_as_matfile)
 %% Summary. This function reads an SBtab document with model's data and converts it to a structure.
 %% Input arguments.
-% directory       -- char    -- an directory with model's data 
-% save_as_matfile -- logical -- save the structure as an matfile or not
+%  directory       -- char    -- an directory with model's data 
+%  save_as_matfile -- logical -- save the structure as an matfile or not
 %% Output arguments.
-% model_data      -- struct  -- the structure with model's data
+%  model_data      -- struct  -- the structure with model's data
 
     dummy=0;
+    %% read arguments
     arguments = {'test', false};
     
     if ~isempty(varargin)
