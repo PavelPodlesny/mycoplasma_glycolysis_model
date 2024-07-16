@@ -8,8 +8,8 @@ function findOscillations(directory, nva)
 %        observables -- char cell -- a cell array with observed species: {'G6P', 'FDP', 'ATP'}
     arguments
         % general parameters 
-        directory char
-        nva.threads         = 5
+        directory char      = 'test'
+        nva.threads         = 1
         nva.info            = ''     % information about an experiment 
         nva.sim_time        = 3600   % duration of a simulation
         nva.use_parallel    = false  % parallel computation for optimization
@@ -20,10 +20,10 @@ function findOscillations(directory, nva)
         nva.min_peak_prom = 10
         nva.min_peak_sep  = 10
         nva.max_stall_iter_fraction = 0.25;
-        nva.AbsTol        = 1e-3;
-        nva.RelTol        = 1e-3;
-        nva.AbsTolScaling = false;
-        nva.SolverType    = 'sundials';
+        nva.AbsTol        = 1e-3
+        nva.RelTol        = 1e-3
+        nva.AbsTolScaling = false
+        nva.SolverType    = 'sundials'
         %nva.peak_number   = 11 
     end
 
@@ -32,7 +32,7 @@ function findOscillations(directory, nva)
     try
     disp('Reset sbioroot...');
     reset(sbioroot);
-    %% subfunctions
+    %% subfunctions !!!
     % K = @(x) ( 2/abs(2-x-sqrt(x*x-4*x)) );
     %% constants 
     data_path = ['/mnt/ecell_data/data2/input' filesep directory];
@@ -48,10 +48,9 @@ function findOscillations(directory, nva)
     end
     %% create a directory for output data
     [output_dir, date] = createOutputDirectory(data_path);
-    %log_.date = date;
-    %log_.dir = output_dir;
     %% read a list of parameters/variables (with boundaries) wich will be varied 
     [params, lb, ub] = getParametersListAndBounds(data_path);
+    % dim(params) = dim(lb) = dim(ub) = [1, nvars]
     nvars = width(params);
     
     %% !!! create log file
@@ -70,7 +69,17 @@ function findOscillations(directory, nva)
     configset.SolverOptions.RelativeTolerance = nva.RelTol;
     configset.SolverOptions.AbsoluteToleranceScaling = nva.AbsTolScaling;
     %model_configs.SolverOptions.OutputTimes = time_span;
-    modelfun = createSimFunction(model, params, species_list, []); %!!!
+    if nva.use_parallel
+        delete(gcp("nocreate"));
+        poolobj = parpool("Processes", nva.threads); %!!!
+        %poolobj = parpool("Threads", nva.threads);
+        % !!!doesn't worl properly with SimFunction
+        % addAttachedFiles(poolobj,"/home/podlesnyi/.MathWorks/SimBiology/aa9a620f-7796-4ed6-90ac-dd9c8e861ccf/");
+        % /home/podlesnyi/.MathWorks/SimBiology
+    else
+        nva.threads = 0;
+    end
+    modelfun = createSimFunction(model, params, species_list, [], 'UseParallel', nva.use_parallel);
     %% define an objective function handler
     objfun = @(p) objectiveFunction(p, modelfun, time_span, ...
                                     nva.min_peak_sep, nva.min_peak_prom);
@@ -95,15 +104,6 @@ function findOscillations(directory, nva)
     %% start optimization
     optim_results_vars = [{'#'} params {'metrics', 'exitflag'}];
     optim_results = table();
-
-    if nva.use_parallel
-        delete(gcp("nocreate"));
-        poolobj = parpool("Threads", nva.threads);
-        %addAttachedFiles(poolobj,"/home/podlesnyi/.MathWorks/SimBiology/aa9a620f-7796-4ed6-90ac-dd9c8e861ccf/");
-        %/home/podlesnyi/.MathWorks/SimBiology
-    else
-        nva.threads = 0;
-    end
     
     for (iter=1:nva.repeats_number)
     %% !!! optimization
@@ -120,7 +120,11 @@ function findOscillations(directory, nva)
             log_.exitflag = exitflag;
             log_.evalnum  = output.funccount;
             log_.message  = output.message;
-            
+            log_.fitted_params = fitted_params;
+        %%% temporal message part !!!
+        %disp('parallel: ', modelfun.UseParallel)
+        %disp('accelerated: ', modelfun.isAccelerated)
+        %%% 
         logger('iteration', log_);
         row = table();
         row(1,:) = [{iter} num2cell(fitted_params) {abs(fval), exitflag}];
@@ -138,10 +142,7 @@ function findOscillations(directory, nva)
                    'FileType', 'text', ...
                    'Delimiter', ',');
     end
-
-    %if nva.use_parallel 
-    %    delete(gcp("nocreate"));
-    %end
+    
     %% !!! plot dynamics
     disp('Job is gone!');
     catch ME
@@ -155,7 +156,7 @@ function findOscillations(directory, nva)
         delete(gcp("nocreate"));
         %% save table with results
         disp('    Saving results...');
-        optim_results.Properties.VariableNames = optim_results_vars;
+        optim_results.Properties.VariableNames = optim_results_vars; %!!!
         writetable(optim_results, [output_dir filesep 'optimization_results.tsv'], ...
                    'FileType', 'text', ...
                    'Delimiter', '\t');
@@ -176,10 +177,10 @@ function [output_dir, date] = createOutputDirectory(data_path)
 end
 
 function [parameters_list, lower_bounds, upper_bounds] = getParametersListAndBounds(data_path)
-    opts = detectImportOptions([data_path filesep 'bounds.tsv'], 'FileType', 'text', ...
+    opts = detectImportOptions([data_path filesep 'Bounds.tsv'], 'FileType', 'text', ...
                                    'TextType', 'char', 'Delimiter', '\t', ...
                                    'ReadVariableNames', true, 'ReadRowNames', false);
-    t = readtable([data_path filesep 'bounds.tsv'], opts);
+    t = readtable([data_path filesep 'Bounds.tsv'], opts);
     parameters_list = (t{:, 1})';
     lower_bounds = (t{:, 2})';
     upper_bounds = (t{:, 3})';
@@ -253,7 +254,9 @@ function logger(mode, log_)
                 fprintf(fid, '\tmetrics   = %d\n', log_.fval);
                 fprintf(fid, '\tevalnum   = %d\n', log_.evalnum);
                 fprintf(fid, '\ttime      = %d min.\n', round(log_.elapsed_time/60));
-                fprintf(fid, '\tmessage: %s\n', log_.message);
+                fmt = ['\tfitted parameters = [', repmat('%s, ', 1, numel(log_.fitted_params)-1), '%s]\n'];
+                fprintf(fid, fmt, log_.fitted_params);
+                fprintf(fid, '\tmessage: %s\n\n', log_.message);
             fclose(fid);
     end
 end
