@@ -4,17 +4,16 @@ function findOscillations(directory, nva)
 %% findOscillations(dir, name-value arguments)
 %% Summary. The main function for finding of oscillations.
 %% Input arguments.
-%        directory   -- char      -- a work directory
-%        observables -- char cell -- a cell array with observed species: {'G6P', 'FDP', 'ATP'}
+%        directory -- char -- a work directory (not a full path)
     arguments
         % general parameters 
         directory char      = 'test'
         nva.threads         = 1
         nva.info            = ''     % information about an experiment 
         nva.sim_time        = 3600   % duration of a simulation
-        nva.use_parallel    = false  % parallel computation for optimization
+        nva.use_parallel    = false  % parallel computation for optimization (both for SimFunction & PSO)
         nva.repeats_number  = 10     % number of repeats
-        nva.optimizer_setup = 'base' % 'base' or 'accurate'
+        nva.optimizer_setup = 'base' % 'base' or 'accurate' (feature is not finished yet)
         % settings for a peak calling
         % !!! add description
         nva.min_peak_prom = 10
@@ -24,19 +23,30 @@ function findOscillations(directory, nva)
         nva.RelTol        = 1e-3
         nva.AbsTolScaling = false
         nva.SolverType    = 'sundials'
+        nva.terminal_log  = true
         %nva.peak_number   = 11 
     end
 
     cleanupObj = onCleanup(@cleanMeUp);
     
     try
+    %% constants 
+    data_path = ['/mnt/ecell_data/data2/input' filesep directory];
+    time_span = [linspace(0,10,101) (11:nva.sim_time)];
+    %% create a directory for output data
+    [output_dir, date] = createOutputDirectory(data_path);
+    if nva.terminal_log
+            disp('Terminal log turns on');
+            %log_path = [output_dir filesep 'terminal_log.txt'];
+            diary /mnt/ecell_data/data2/log/terminal_log.txt;
+            diary on;
+            disp(['#### ' date ' ####']);
+            disp(['####' nva.info ' ####']);
+    end
     disp('Reset sbioroot...');
     reset(sbioroot);
     %% subfunctions !!!
     % K = @(x) ( 2/abs(2-x-sqrt(x*x-4*x)) );
-    %% constants 
-    data_path = ['/mnt/ecell_data/data2/input' filesep directory];
-    time_span = [linspace(0,10,101) (11:nva.sim_time)];
     %% load a model
     models_list = dir([data_path filesep '*.xml']);
     model = sbmlimport([data_path filesep models_list(1).name]);
@@ -46,14 +56,12 @@ function findOscillations(directory, nva)
     for i=1:species_number
         species_list{i} = model.Species(i).Name;
     end
-    %% create a directory for output data
-    [output_dir, date] = createOutputDirectory(data_path);
     %% read a list of parameters/variables (with boundaries) wich will be varied 
     [params, lb, ub] = getParametersListAndBounds(data_path);
-    % dim(params) = dim(lb) = dim(ub) = [1, nvars]
+    % NOTE: dim(params) = dim(lb) = dim(ub) = [1, nvars]
     nvars = width(params);
     
-    %% !!! create log file
+    %% create log file
     nva.params = params;
     nva.lb = lb;
     nva.ub = ub;
@@ -63,15 +71,16 @@ function findOscillations(directory, nva)
     %% create SimFunction object
     % default solver - ode15s
     disp('Configurate solver...');
-    configset = getconfigset(model);
-    %configset.SolverType = nva.SolverType;
+    configset = getconfigset(model, 'default');
+    configset.SolverType = nva.SolverType;
     configset.SolverOptions.AbsoluteTolerance = nva.AbsTol;
     configset.SolverOptions.RelativeTolerance = nva.RelTol;
     configset.SolverOptions.AbsoluteToleranceScaling = nva.AbsTolScaling;
     %model_configs.SolverOptions.OutputTimes = time_span;
     if nva.use_parallel
         delete(gcp("nocreate"));
-        poolobj = parpool("Processes", nva.threads); %!!!
+        disp('Create parallel pool on cluster...');
+        poolobj = parpool("Processes", nva.threads); % 'Threads' don't work correctly  
         %poolobj = parpool("Threads", nva.threads);
         % !!!doesn't worl properly with SimFunction
         % addAttachedFiles(poolobj,"/home/podlesnyi/.MathWorks/SimBiology/aa9a620f-7796-4ed6-90ac-dd9c8e861ccf/");
@@ -80,6 +89,7 @@ function findOscillations(directory, nva)
         nva.threads = 0;
     end
     modelfun = createSimFunction(model, params, species_list, [], 'UseParallel', nva.use_parallel);
+    accelerate(modelfun); % compile to C code
     %% define an objective function handler
     objfun = @(p) objectiveFunction(p, modelfun, time_span, ...
                                     nva.min_peak_sep, nva.min_peak_prom);
@@ -95,6 +105,7 @@ function findOscillations(directory, nva)
         disp('Setting pso...');
         pso_settings.swarm_size  = max(100, 10*nvars);
         pso_settings.max_stall_iterations = nva.max_stall_iter_fraction*(200*nvars); % 200*nvars = default MaxIterations
+        % settings from a article 
         %pso_settings.self_weight = 1.49;
         %pso_settings.social_weight = 1.49;
         %pso_settings.inertia = [0.1, 1.1];
@@ -102,9 +113,17 @@ function findOscillations(directory, nva)
     end
     opts = setupPSO(pso_settings);
     %% start optimization
+    % prepare a table, where optimization's results will be saved
     optim_results_vars = [{'#'} params {'metrics', 'exitflag'}];
     optim_results = table();
     
+    %% define path for graphs
+    plot_path = [output_dir filesep 'fit_plots.pdf'];
+    page_is_1st = true; % flag, which indicates, that a graph on the 1st page will be plotted 
+    %% optimization                        
+    disp('Start optimization...');
+    tot_etime_start =  tic;
+    %parfor (iter=1:nva.repeats_number, min(round(nva.threads/2), nva.repeats_number) )
     for (iter=1:nva.repeats_number)
     %% !!! optimization
         disp([datestr(now, 'dd-mmm-HH-MM') ': iter. ' num2str(iter) ' starts...']);
@@ -121,10 +140,10 @@ function findOscillations(directory, nva)
             log_.evalnum  = output.funccount;
             log_.message  = output.message;
             log_.fitted_params = fitted_params;
-        %%% temporal message part !!!
+        %% temporal message part (only for debugging) !!!
         %disp('parallel: ', modelfun.UseParallel)
         %disp('accelerated: ', modelfun.isAccelerated)
-        %%% 
+        %%
         logger('iteration', log_);
         row = table();
         row(1,:) = [{iter} num2cell(fitted_params) {abs(fval), exitflag}];
@@ -135,33 +154,52 @@ function findOscillations(directory, nva)
 %             optim_results.metrics(iter) = fval;
 %             optim_results.exit_flag(iter) = exitflag;
         %% save solution with new parameters
-        [t, sol] = modelfun(fitted_params, [], [], time_span);
-        solution = array2table([t{1} sol{1}]);
+        %[t, sol] = modelfun(fitted_params, [], [], time_span);
+        %solution = array2table([t{1} sol{1}]);
+        sim_data = modelfun(fitted_params, [], [], time_span);
+        %% add plot
+        fig = plotSimData(sim_data);
+        if page_is_1st
+                exportgraphics(fig, plot_path, 'BackgroundColor', 'none', 'ContentType', 'vector');
+                page_is_1st = false;
+        else
+                exportgraphics(fig, plot_path, 'Append', true, 'BackgroundColor', 'none', 'ContentType', 'vector');
+        end 
+        close(fig);
+        %% save sim. results
+        [t, sol, ~] = getdata(sim_data(1));
+        solution = array2table([t sol]);
         solution.Properties.VariableNames = [{'time'} species_list];
         writetable(solution, [output_dir filesep 'solution-' num2str(iter) '.csv'], ...
                    'FileType', 'text', ...
                    'Delimiter', ',');
+        %%
     end
-    
-    %% !!! plot dynamics
-    disp('Job is gone!');
+    tot_elapsed_time = toc(tot_etime_start);
+    disp(['Total elapsed time: ' num2str(round(tot_elapsed_time, 0)) ' sec.']);
+    disp('Job is done!');
     catch ME
         delete(gcp("nocreate"));
+        diary off;
         fclose('all');
+        close all;
         rethrow(ME);
     end
 
     function cleanMeUp()
         disp('Cleaning up...');
+        disp('    Shutting down a pool of workers on a cluster...');
         delete(gcp("nocreate"));
         %% save table with results
         disp('    Saving results...');
         optim_results.Properties.VariableNames = optim_results_vars; %!!!
-        writetable(optim_results, [output_dir filesep 'optimization_results.tsv'], ...
+        writetable(optim_results, [output_dir filesep 'optimization_results.csv'], ...
                    'FileType', 'text', ...
-                   'Delimiter', '\t');
+                   'Delimiter', ',');
         disp('    Closing files...');
+        diary off;
         fclose('all');
+        close all;
     end
 end
 
@@ -204,6 +242,7 @@ function opts = setupPSO(s)
                                 'Display'               , 'none'                   ,...
                                 'SwarmSize'             , s.swarm_size             ,...
                                 'MaxStallIterations'    , s.max_stall_iterations   ,...
+                                'UseParallel'           , s.use_parallel           ,...
                                 'UseVectorized'         , false);
                                 %'ObjectiveLimit'        , s.objective_limit        ,...
                                 %'InertiaRange'          , s.inertia                ,...
@@ -215,7 +254,8 @@ function opts = setupPSO(s)
                                 %'MaxTime'               , s.max_time
         case 'base'
             opts = optimoptions('particleswarm', ...
-                                'Display'               , 'none'                   ,... 
+                                'Display'               , 'none'                   ,...
+                                'UseParallel'           , s.use_parallel           ,...
                                 'UseVectorized'         , false);
                                 %'ObjectiveLimit'        , s.objective_limit        ,...
                                 %'UseParallel'           , s.use_parallel           ,...
@@ -231,6 +271,7 @@ function logger(mode, log_)
                 fprintf(fid, '\tdirectory    : %s\n', log_.dir);
                 fprintf(fid, '### Experiment information ###\n');
                 fprintf(fid, ['\t%s\n'], log_.info );
+                fprintf(fid, '\tsim. time    = %d\n', log_.sim_time);
                 fprintf(fid, '\titer. num.: %d\n', log_.repeats_number);
                 fmt = ['\tvariable parameters = [', repmat('%s, ', 1, numel(log_.params)-1), '%s]\n'];
                 fprintf(fid, fmt, log_.params{:});
@@ -238,13 +279,18 @@ function logger(mode, log_)
                 fprintf(fid, fmt, log_.ub);
                 fmt = ['\tlower bounds = [', repmat('%g, ', 1, numel(log_.lb)-1), '%g]\n'];
                 fprintf(fid, fmt, log_.lb);
+                fprintf(fid, '###  Solver information ###\n');
+                fprintf(fid, '\tsolver type : %s\n' , log_.SolverType);
+                fprintf(fid, '\tabs. tol    : %e\n' , log_.AbsTol);
+                fprintf(fid, '\trel. tol    : %e\n' , log_.RelTol);
+                fprintf(fid, '\tabs. tol. scaling : %d\n' , log_.AbsTolScaling);
+                fprintf(fid, '###  Optimization information ###\n');
                 fprintf(fid, '\tsetup type  : %s\n' , log_.optimizer_setup);
                 fprintf(fid, '\tuse parallel: %d\n' , log_.use_parallel);
+                fprintf(fid, '\tmin. peak sep.  : %d\n', log_.min_peak_sep);
+                fprintf(fid, '\tmin. peak prom. : %d\n', log_.min_peak_prom);
                 fprintf(fid, '\tMaxStallIterFraction: %.2f\n' , log_.max_stall_iter_fraction);
-                fprintf(fid, '\tsim. time    = %d\n', log_.sim_time);
                 %fprintf(fid, '\tpeaks number = %d\n', log_.peak_number);
-                fprintf(fid, '\tminPeakSep   = %d\n', log_.min_peak_sep);
-                fprintf(fid, '\tminPeakProm  = %d\n', log_.min_peak_prom);
             fclose(fid);
         case 'iteration'
             fid = fopen([log_.dir filesep 'log.txt'], 'a');
@@ -254,7 +300,7 @@ function logger(mode, log_)
                 fprintf(fid, '\tmetrics   = %d\n', log_.fval);
                 fprintf(fid, '\tevalnum   = %d\n', log_.evalnum);
                 fprintf(fid, '\ttime      = %d min.\n', round(log_.elapsed_time/60));
-                fmt = ['\tfitted parameters = [', repmat('%s, ', 1, numel(log_.fitted_params)-1), '%s]\n'];
+                fmt = ['\tfitted parameters = [', repmat('%.2f, ', 1, numel(log_.fitted_params)-1), '%.2f]\n'];
                 fprintf(fid, fmt, log_.fitted_params);
                 fprintf(fid, '\tmessage: %s\n\n', log_.message);
             fclose(fid);

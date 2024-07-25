@@ -39,9 +39,9 @@ function fig = plotSimData(sim_data, nva)
                 
                 if (nva.plot_exp_data && isKey(var2exp, names(i)))
                         var_name = var2exp(names(i));
-                        exp_data = grp_data_table(:, ['ID', 'Time', var_name]);
+                        exp_data = grp_data_table(:, ['GroupID', 'Time', var_name]);
                         hold on;
-                        s = scatter(exp_data, 'Time', var_name, 'ColorVariable', 'ID');
+                        s = scatter(exp_data, 'Time', var_name, 'ColorVariable', 'GroupID');
                         s.SizeData = 10;
                         hold off;
                 end
