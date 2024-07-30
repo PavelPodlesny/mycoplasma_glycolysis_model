@@ -2,14 +2,14 @@
 function fitModelToData(model_dir, data_dir, nva)
 
         arguments
-                model_dir char % a directory (not a full path), where model's .xml file is stored
-                data_dir char  % a directory (not a full path), where data for model's fitting is stored
-                nva.pooled logical = true % pool data together (a model will be fitted across all experimental samples)
-                nva.repeats_number = 1
-                nva.use_parallel logical = false
-                nva.sens_analysis = false
-                nva.threads double = 1
-                nva.error_model char = 'constant'
+                model_dir char  % a directory (not a full path), where model's .xml file is stored
+                data_dir  char  % a directory (not a full path), where data for model's fitting is stored
+                nva.repeats_number  uint8 = 1
+                nva.threads         uint8 = 1
+                nva.use_parallel  logical = false
+                nva.sens_analysis logical = false
+                nva.pooled        logical = true % pool data together (a model will be fitted across all experimental samples)
+                nva.error_model      char = 'constant'
         end
 
         cleanupObj = onCleanup(@cleanMeUp);
@@ -35,6 +35,14 @@ function fitModelToData(model_dir, data_dir, nva)
                 %% create output directory and read experimental data
                 [output_dir, date] = createOutputDirectory(data_path);
 
+                %% log
+                nva.model_path = model_path;
+                nva.data_path = data_path;
+                nva.output_path = output_dir;
+                nva.date = date;
+                logger(nva);
+                %%
+                
                 variants = getModelVariants(data_path);
                 % a table with experimental data
                 % exp_data.Properties.VariableNames = {'VariantID', 'GroupID', 'Time', ... Species ...}
@@ -72,16 +80,21 @@ function fitModelToData(model_dir, data_dir, nva)
                                 % update a table with optimization's results
                                 [sim_data, est_params] = fitted(optim_results);
                                 %% plot graphs
-                                fig = plotSimData(sim_data, plot_exp_data = true, grp_data = grp_data, resp_map = resp_map);
-                                %plot(optim_results);
+                                plotSimData(sim_data, plot_path, page_is_1st,...
+                                        plot_exp_data = true, grp_data = grp_data, resp_map = resp_map);
                                 if page_is_1st
-                                        exportgraphics(fig, plot_path, 'BackgroundColor', 'none', 'ContentType', 'vector');
                                         page_is_1st = false;
-                                else
-                                        exportgraphics(fig, plot_path, 'Append', true, ...
-                                                        'BackgroundColor', 'none', 'ContentType', 'vector');
                                 end 
-                                close(fig);
+                                %fig = plotSimData(sim_data, plot_exp_data = true, grp_data = grp_data, resp_map = resp_map);
+                                %plot(optim_results);
+                                %if page_is_1st
+                                %        exportgraphics(fig, plot_path, 'BackgroundColor', 'none', 'ContentType', 'vector');
+                                %        page_is_1st = false;
+                                %else
+                                %        exportgraphics(fig, plot_path, 'Append', true, ...
+                                %                        'BackgroundColor', 'none', 'ContentType', 'vector');
+                                %end 
+                                %close(fig);
                                 %% debug
                                 %disp(est_params);
                                 %disp(varfun(@class, est_params, 'OutputFormat', 'cell'));
@@ -177,11 +190,15 @@ function vars = getModelVariants(data_path)
                                    'TextType', 'string', 'Delimiter', '\t', ...
                                    'ReadVariableNames', true, 'ReadRowNames', false);
         tbl = readtable([data_path filesep 'Variant.tsv'], opts);
-
-        n = height(tbl);
         
-        for (i=1:n)
-             vars(i) = sbiovariant(tbl{i, "ID"}, table2cell(tbl(i, 2:end)));
+        ids = unique(tbl.ID);
+        for (i=1:length(ids))
+                var_tbl = table2cell(tbl(tbl.ID==ids(i), 2:end));
+                var_cell = cell(1, size(var_tbl, 1));
+                for j=1:size(var_tbl, 1)
+                        var_cell{j} = var_tbl(j,:);
+                end
+                vars(i) = sbiovariant(ids(i), var_cell);
         end
 end
 
@@ -190,4 +207,20 @@ function data = readExperimentalData(data_path)
                                    'TextType', 'string', 'Delimiter', '\t', ...
                                    'ReadVariableNames', true, 'ReadRowNames', false);
         data = readtable([data_path filesep 'ExperimentalData.tsv'], opts);
+end
+
+function logger(log_)
+        fid = fopen([log_.output_path filesep 'log.txt'], 'w');
+        fprintf(fid, '### Files information ###\n\tFID = %d\n', fid);
+        fprintf(fid, '\tcreation date: %s\n', log_.date);
+        fprintf(fid, '\tmodel dir.   : %s\n', log_.model_path);
+        fprintf(fid, '\tdata  dir.   : %s\n', log_.data_path);
+        fprintf(fid, '\tresults dir. : %s\n', log_.output_path);
+        fprintf(fid, '### Experiment information ###\n');
+        fprintf(fid, '\titer. num.   : %d\n' , log_.repeats_number);
+        fprintf(fid, '\tuse parallel : %d\n' , log_.use_parallel);
+        fprintf(fid, '\tpooled data  : %d\n' , log_.pooled);
+        fprintf(fid, '\tsens.analysis: %d\n' , log_.sens_analysis);
+        fprintf(fid, '\terror model  : %s\n' , log_.error_model);
+        fclose(fid);
 end

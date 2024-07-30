@@ -1,4 +1,4 @@
-function [model, equations] = buildSBMLmodel(model_data, varargin)
+function [model, equations] = buildSBMLmodel(model_data, model_name, turn_on_unit_convers)
 %% sbml_model = buildSBMLmodel(model_data, model_name)
 %% Summary. This function builds SBML model from 'model_data' structure and verifies it.
 %% Input arguments.
@@ -7,18 +7,17 @@ function [model, equations] = buildSBMLmodel(model_data, varargin)
 %% Output arguments.
 %        model     -- SimBiology model object -- a model
 %        equations -- char                    -- model's equations 
-    dummy=0;
-    arguments = {'mycoplasma_glycolysis'};
-    
-    if ~isempty(varargin)
-        arguments(1:nargin-1) = varargin;
-    end
 
-    model_name = arguments{1};
-    
     %%create model object 
     model = sbiomodel(model_name);
 
+    %% turn off dimentional analysis and units conversation
+    if turn_on_unit_convers
+            configset = getconfigset(model);
+            compopt = configset.CompileOptions;
+            compopt.UnitConversion = true;
+    end
+    %%
     %% add compartments
     for i=1:height(model_data.compartment)
         comp = addcompartment(model, model_data.compartment{i, '!Name'});

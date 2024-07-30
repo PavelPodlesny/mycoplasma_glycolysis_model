@@ -7,23 +7,23 @@ function findOscillations(directory, nva)
 %        directory -- char -- a work directory (not a full path)
     arguments
         % general parameters 
-        directory char      = 'test'
-        nva.threads         = 1
-        nva.info            = ''     % information about an experiment 
-        nva.sim_time        = 3600   % duration of a simulation
-        nva.use_parallel    = false  % parallel computation for optimization (both for SimFunction & PSO)
-        nva.repeats_number  = 10     % number of repeats
-        nva.optimizer_setup = 'base' % 'base' or 'accurate' (feature is not finished yet)
+        directory    char   = 'test'
+        nva.info     char   = ''     % information about an experiment
+        nva.threads  uint8  = 1 
+        nva.sim_time uint16 = 3600   % duration of a simulation
+        nva.use_parallel logical = false  % parallel computation for optimization (both for SimFunction & PSO)
+        nva.repeats_number uint8 = 10     % number of repeats
+        nva.optimizer_setup char = 'base' % 'base' or 'accurate' (feature is not finished yet)
         % settings for a peak calling
         % !!! add description
-        nva.min_peak_prom = 10
-        nva.min_peak_sep  = 10
-        nva.max_stall_iter_fraction = 0.25;
-        nva.AbsTol        = 1e-3
-        nva.RelTol        = 1e-3
-        nva.AbsTolScaling = false
-        nva.SolverType    = 'sundials'
-        nva.terminal_log  = true
+        nva.min_peak_prom double = 10
+        nva.min_peak_sep  double = 10
+        nva.SolverType       char = 'sundials'
+        nva.AbsTol         double = 1e-3
+        nva.RelTol         double = 1e-3
+        nva.max_stall_iter_fraction double = 0.25
+        nva.AbsTolScaling logical = false
+        nva.terminal_log  logical = true
         %nva.peak_number   = 11 
     end
 
@@ -36,12 +36,11 @@ function findOscillations(directory, nva)
     %% create a directory for output data
     [output_dir, date] = createOutputDirectory(data_path);
     if nva.terminal_log
-            disp('Terminal log turns on');
             %log_path = [output_dir filesep 'terminal_log.txt'];
             diary /mnt/ecell_data/data2/log/terminal_log.txt;
             diary on;
             disp(['#### ' date ' ####']);
-            disp(['####' nva.info ' ####']);
+            disp(['#### ' nva.info ' ####']);
     end
     disp('Reset sbioroot...');
     reset(sbioroot);
@@ -119,6 +118,7 @@ function findOscillations(directory, nva)
     
     %% define path for graphs
     plot_path = [output_dir filesep 'fit_plots.pdf'];
+    %%% !!!
     page_is_1st = true; % flag, which indicates, that a graph on the 1st page will be plotted 
     %% optimization                        
     disp('Start optimization...');
@@ -158,14 +158,11 @@ function findOscillations(directory, nva)
         %solution = array2table([t{1} sol{1}]);
         sim_data = modelfun(fitted_params, [], [], time_span);
         %% add plot
-        fig = plotSimData(sim_data);
+        plotSimData(sim_data, plot_path, page_is_1st);
         if page_is_1st
-                exportgraphics(fig, plot_path, 'BackgroundColor', 'none', 'ContentType', 'vector');
                 page_is_1st = false;
-        else
-                exportgraphics(fig, plot_path, 'Append', true, 'BackgroundColor', 'none', 'ContentType', 'vector');
         end 
-        close(fig);
+        %close(fig);
         %% save sim. results
         [t, sol, ~] = getdata(sim_data(1));
         solution = array2table([t sol]);
@@ -271,7 +268,7 @@ function logger(mode, log_)
                 fprintf(fid, '\tdirectory    : %s\n', log_.dir);
                 fprintf(fid, '### Experiment information ###\n');
                 fprintf(fid, ['\t%s\n'], log_.info );
-                fprintf(fid, '\tsim. time    = %d\n', log_.sim_time);
+                fprintf(fid, '\tsim. time : %d sec.\n', log_.sim_time);
                 fprintf(fid, '\titer. num.: %d\n', log_.repeats_number);
                 fmt = ['\tvariable parameters = [', repmat('%s, ', 1, numel(log_.params)-1), '%s]\n'];
                 fprintf(fid, fmt, log_.params{:});
