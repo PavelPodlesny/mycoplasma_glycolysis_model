@@ -12,6 +12,7 @@ function plotSimData(sim_data, plot_path, page_is_1st, nva)
         % map models' variables to their units and exp. variables
         if nva.plot_exp_data
                 grp_data_table = nva.grp_data;
+                gID = grp_data_table.GroupID{1}; %!!! 17/10/24
                 %% assign values to var2exp dict. (matching between species names in a model and in data)
                 var2exp = dictionary;
                 for i = 1:length(nva.resp_map)
@@ -46,7 +47,7 @@ function plotSimData(sim_data, plot_path, page_is_1st, nva)
                                         scatter(grp_data_table.Time, grp_data_table{:,[var_name]}, 12, "red");
                                         hold off;
                                 end
-                                title(names{i}, 'FontSize', 8);
+                                title([gID,':',names{i}], 'FontSize', 8);
                                 ylabel(['Amount, ' var2units(names{i})], 'Interpreter', 'none', 'FontSize', 8);
                                 xlabel('Time, sec.', 'FontSize', 8);
                         end
@@ -60,5 +61,6 @@ function plotSimData(sim_data, plot_path, page_is_1st, nva)
                 end 
                 close(fig);
         end
+        
         
 end

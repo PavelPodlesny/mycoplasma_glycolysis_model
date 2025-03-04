@@ -15,6 +15,7 @@ function [residuals_mat, metrics, output_dir] = fitModelToData(model_dir, data_d
                 nva.use_parallel_ci   logical = false
                 nva.sens_analysis logical = false
                 nva.pooled        logical = true % pool data together (a model will be fitted across all experimental samples)
+                nva.save_time_course logical = true
         end
 
         cleanupObj = onCleanup(@cleanMeUp);
@@ -129,6 +130,16 @@ function [residuals_mat, metrics, output_dir] = fitModelToData(model_dir, data_d
                                 if page_is_1st
                                         page_is_1st = false;
                                 end
+                        end
+
+                        if nva.save_time_course
+                                sdata = table;
+                                for (i=1:length(variants))
+                                        var = variants(i);
+                                        gID = var.Name;
+                                        sdata = SimData2table(sim_data(i), gID, sdata);
+                                end
+                                writetable(sdata, [output_dir filesep 'sim_data_iter' num2str(iter) '.csv']);
                         end
                         %% debug
                         %disp(est_params);
@@ -268,5 +279,22 @@ function logger(mode, log_)
                         fprintf(fid, '              BIC : %.2f\n', log_.metrics("BIC"));
                         fprintf(fid, '              SSE : %e\n', log_.metrics("SSE"));
                         fclose(fid);
+        end
+end
+
+function sdata = SimData2table(sim_data, groupID, prev_sdata)
+
+        %% assign values to var2exp dict. (matching between species names in a model and in data)
+
+        [time, data, names] = getdata(sim_data);
+        %disp(size(time));
+        %disp(size(data));
+        sdata = array2table(data, 'VariableNames', names);
+        sdata.Time = time;
+        sdata.GroupID = repmat(string(groupID), height(sdata), 1);
+        sdata = sdata(:, [{'GroupID', 'Time'}, setdiff(sdata.Properties.VariableNames, {'GroupID', 'Time'}, 'stable')]);
+
+        if (height(prev_sdata)~=0)
+                sdata = [prev_sdata; sdata];
         end
 end
