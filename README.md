@@ -1,2 +1,2 @@
 # mycoplasma_glycolysis
- a model of glycolysis of Mycoplasma bacterium 
+ Studying kinetics of glycolytic enzymes in the bacterium M. gallisepticum 
